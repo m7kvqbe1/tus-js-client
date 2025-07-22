@@ -116,6 +116,8 @@ export class BaseUpload {
   // upload options or HEAD response)
   private _uploadLengthDeferred: boolean
 
+
+
   constructor(file: UploadInput, options: UploadOptions) {
     // Warn about removed options from previous versions
     if ('resume' in options) {
@@ -283,7 +285,7 @@ export class BaseUpload {
    *
    * @api private
    */
-  private async _startParallelUpload(): Promise<void> {
+    private async _startParallelUpload(): Promise<void> {
     const totalSize = this._size
     let totalProgress = 0
     this._parallelUploads = []
@@ -373,6 +375,9 @@ export class BaseUpload {
 
         // @ts-expect-error `value` is unknown and not an UploadInput
         const upload = new BaseUpload(value, options)
+
+
+
         upload.start()
 
         // Store the upload in an array, so we can later abort them if necessary.
@@ -712,6 +717,11 @@ export class BaseUpload {
         throw new DetailedError('tus: upload is currently locked; retry later', undefined, req, res)
       }
 
+      // For 5xx server errors, throw error to trigger retry instead of creating new upload
+      if (inStatusCategory(status, 500)) {
+        throw new DetailedError('tus: server error during resume, retrying', undefined, req, res)
+      }
+
       if (inStatusCategory(status, 400)) {
         // Remove stored fingerprint and corresponding endpoint,
         // on client errors since the file can not be found
@@ -728,7 +738,7 @@ export class BaseUpload {
         )
       }
 
-      // Try to create a new upload
+      // Try to create a new upload (only for 4xx client errors and 3xx redirects)
       this.url = null
       await this._createUpload()
     }
@@ -758,6 +768,8 @@ export class BaseUpload {
     if (typeof this.options.onUploadUrlAvailable === 'function') {
       await this.options.onUploadUrlAvailable()
     }
+
+
 
     await this._saveUploadInUrlStorage()
 
