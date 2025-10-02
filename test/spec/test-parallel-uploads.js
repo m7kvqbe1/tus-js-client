@@ -658,7 +658,7 @@ describe('tus', () => {
       // Track all requests to detect if fresh uploads are created
       const allRequests = []
       const originalCreateRequest = testStack.createRequest.bind(testStack)
-      testStack.createRequest = function(method, url) {
+      testStack.createRequest = (method, url) => {
         allRequests.push({ method, url })
         return originalCreateRequest(method, url)
       }
@@ -773,15 +773,13 @@ describe('tus', () => {
       await options.onSuccess.toBeCalled()
 
       // Final verification: count how many POST requests to /uploads we made
-      const postToUploads = allRequests.filter(r =>
-        r.method === 'POST' && r.url === 'https://tus.io/uploads'
+      const postToUploads = allRequests.filter(
+        (r) => r.method === 'POST' && r.url === 'https://tus.io/uploads',
       )
 
       // Should only be 3 POSTs: 2 partial + 1 final concatenation
       // If the bug exists, we'd see 4 POSTs (an extra one from the retry)
       expect(postToUploads.length).toBe(3)
     })
-
-
   })
 })

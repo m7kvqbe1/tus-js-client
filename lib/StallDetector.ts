@@ -9,10 +9,7 @@ export class StallDetector {
   private lastProgressTime = 0
   private isActive = false
 
-  constructor(
-    options: StallDetectionOptions,
-    onStallDetected: (reason: string) => void,
-  ) {
+  constructor(options: StallDetectionOptions, onStallDetected: (reason: string) => void) {
     this.options = options
     this.onStallDetected = onStallDetected
   }
