@@ -22,6 +22,7 @@ class StallTestHttpStack extends TestHttpStack {
     this.progressSequences = new Map()
     this.progressPromises = new Map()
     this.nextProgressSequence = null
+    this.methodsToStall = new Set()
   }
 
   /**
@@ -29,6 +30,19 @@ class StallTestHttpStack extends TestHttpStack {
    */
   simulateStallOnNextPatch() {
     this.stallOnNextPatch = true
+  }
+
+  /**
+   * Configure the stack to simulate a stall for a specific HTTP method
+   *
+   * When this is called, the specified HTTP method will stall on the next request.
+   * The stall is created by returning a promise that never resolves or rejects,
+   * simulating a network request that starts but never receives any data.
+   *
+   * @param {String} method - HTTP method to stall (e.g., 'POST', 'HEAD', 'PATCH')
+   */
+  simulateStallForMethod(method) {
+    this.methodsToStall.add(method)
   }
 
   /**
@@ -46,24 +60,55 @@ class StallTestHttpStack extends TestHttpStack {
   createRequest(method, url) {
     const req = super.createRequest(method, url)
 
-    if (method === 'PATCH') {
+    if (this.methodsToStall.has(method)) {
+      this._setupMethodStall(req, method)
+      this.methodsToStall.delete(method)
+    } else if (method === 'PATCH') {
       this._setupPatchRequest(req)
     }
 
     return req
   }
 
+  _setupMethodStall(req, method) {
+    const originalAbort = req.abort.bind(req)
+
+    req.send = async function (body) {
+      this.body = body
+
+      // We create a promise but never resolve or reject it, this
+      // simulates a network request that starts but never completes
+      this._requestPromise = new Promise((resolve, reject) => {
+        this._rejectRequest = reject
+        this._resolveRequest = resolve
+      })
+
+      if (req._onRequestSend) {
+        req._onRequestSend(this)
+      }
+
+      // Return the hanging promise - the caller will await this forever
+      // (until StallDetector calls abort after timeout)
+      return this._requestPromise
+    }
+
+    req.abort = function() {
+      if (this._rejectRequest) {
+        this._rejectRequest(new Error('request aborted'))
+      }
+      originalAbort()
+    }
+  }
+
   _setupPatchRequest(req) {
     const self = this
 
-    // Handle complete stalls
     if (this.stallOnNextPatch) {
       this.stallOnNextPatch = false
       req.send = async function (body) {
         this.body = body
         if (body) {
           this.bodySize = await getBodySize(body)
-          // Don't call progress handler to simulate a complete stall
         }
         this._onRequestSend(this)
         return this._requestPromise
@@ -71,13 +116,11 @@ class StallTestHttpStack extends TestHttpStack {
       return
     }
 
-    // Handle progress sequences
     if (this.nextProgressSequence) {
       this.progressSequences.set(req, this.nextProgressSequence)
       this.nextProgressSequence = null
     }
 
-    // Override respondWith to wait for progress events
     const originalRespondWith = req.respondWith.bind(req)
     req.respondWith = async (resData) => {
       const progressPromise = self.progressPromises.get(req)
@@ -88,7 +131,6 @@ class StallTestHttpStack extends TestHttpStack {
       originalRespondWith(resData)
     }
 
-    // Override send to handle progress sequences
     req.send = async function (body) {
       this.body = body
       if (body) {
@@ -115,7 +157,7 @@ class StallTestHttpStack extends TestHttpStack {
           progressHandler(event.bytes)
         }
         resolve()
-      }, 10) // Small delay to ensure stall detector is started
+      }, 10)
     })
     this.progressPromises.set(req, progressPromise)
   }
@@ -126,7 +168,7 @@ class StallTestHttpStack extends TestHttpStack {
         progressHandler(0)
         progressHandler(bodySize)
         resolve()
-      }, 10) // Small delay to ensure stall detector is started
+      }, 10)
     })
     this.progressPromises.set(req, progressPromise)
   }
@@ -164,6 +206,47 @@ async function handleUploadCreation(testStack, location = '/uploads/12345') {
     },
   })
   return req
+}
+
+/**
+ * Helper function to test stall detection for a specific request method
+ */
+async function testStallDetectionForMethod(method, uploadOptions = {}) {
+  const { enableDebugLog } = await import('tus-js-client')
+  enableDebugLog()
+
+  const testStack = new StallTestHttpStack()
+  testStack.simulateStallForMethod(method)
+
+  const options = {
+    httpStack: testStack,
+    stallDetection: {
+      enabled: true,
+      checkInterval: 50,
+      stallTimeout: 200,
+    },
+    retryDelays: null,
+    ...uploadOptions,
+  }
+
+  const { upload, options: testOptions } = createTestUpload(options)
+
+  const originalLog = console.log
+  let loggedMessage = ''
+  console.log = (message) => {
+    loggedMessage += message + '\n'
+  }
+
+  upload.start()
+
+  const request = await testStack.nextRequest()
+  expect(request.method).toBe(method)
+
+  const error = await testOptions.onError.toBeCalled()
+
+  console.log = originalLog
+
+  return { error, loggedMessage, request }
 }
 
 describe('tus-stall-detection', () => {
@@ -392,6 +475,28 @@ describe('tus-stall-detection', () => {
       const error = await options.onError.toBeCalled()
       expect(error.message).toContain('stalled: no progress')
       expect(options.onProgress.calls.count()).toBeGreaterThan(0)
+    })
+
+    it('should detect stalls during POST request (upload creation)', async () => {
+      const { error, loggedMessage, request } = await testStallDetectionForMethod('POST')
+
+      expect(request.url).toBe('https://tus.io/uploads')
+      expect(error.message).toContain('request aborted')
+      expect(error.message).toContain('POST')
+      expect(loggedMessage).toContain('starting stall detection')
+      expect(loggedMessage).toContain('upload stalled')
+    })
+
+    it('should detect stalls during HEAD request (resuming upload)', async () => {
+      const { error, loggedMessage, request } = await testStallDetectionForMethod('HEAD', {
+        uploadUrl: 'https://tus.io/uploads/existing',
+      })
+
+      expect(request.url).toBe('https://tus.io/uploads/existing')
+      expect(error.message).toContain('request aborted')
+      expect(error.message).toContain('HEAD')
+      expect(loggedMessage).toContain('starting stall detection')
+      expect(loggedMessage).toContain('upload stalled')
     })
   })
 })
