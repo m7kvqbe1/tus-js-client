@@ -862,7 +862,6 @@ export class BaseUpload {
       if (this.options.httpStack.supportsProgressEvents()) {
         return new StallDetector(
           this.options.stallDetection,
-          this.options.httpStack,
           (reason: string) => {
             // Handle stall by aborting the current request and triggering retry
             if (this._req) {
