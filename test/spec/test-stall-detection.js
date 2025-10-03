@@ -70,7 +70,7 @@ class StallTestHttpStack extends TestHttpStack {
     return req
   }
 
-  _setupMethodStall(req, method) {
+  _setupMethodStall(req, _method) {
     const originalAbort = req.abort.bind(req)
 
     req.send = async function (body) {
@@ -92,7 +92,7 @@ class StallTestHttpStack extends TestHttpStack {
       return this._requestPromise
     }
 
-    req.abort = function() {
+    req.abort = function () {
       if (this._rejectRequest) {
         this._rejectRequest(new Error('request aborted'))
       }
@@ -234,7 +234,7 @@ async function testStallDetectionForMethod(method, uploadOptions = {}) {
   const originalLog = console.log
   let loggedMessage = ''
   console.log = (message) => {
-    loggedMessage += message + '\n'
+    loggedMessage += `${message}\n`
   }
 
   upload.start()
@@ -444,8 +444,10 @@ describe('tus-stall-detection', () => {
       expect(options.onProgress.calls.count()).toBeGreaterThan(0)
     })
 
-    it('should detect stalls when progress value does not change', async () => {
+    it('should NOT detect stalls when progress value does not change but events are still fired', async () => {
+      const file = getBlob('hello world')
       const { upload, options, testStack } = createTestUpload({
+        file,
         stallDetection: {
           enabled: true,
           checkInterval: 50,
@@ -454,14 +456,18 @@ describe('tus-stall-detection', () => {
         retryDelays: null,
       })
 
-      // Create a progress sequence that gets stuck at 300 bytes
+      // Create a progress sequence that gets stuck at 5 bytes
+      // but still fires progress events (simulating NodeHttpStack buffer behavior)
       const progressSequence = [
         { bytes: 0, delay: 10 },
-        { bytes: 100, delay: 10 },
-        { bytes: 200, delay: 10 },
-        { bytes: 300, delay: 10 },
-        // Repeat the same value to trigger value-based stall detection
-        ...Array(12).fill({ bytes: 300, delay: 30 }),
+        { bytes: 2, delay: 10 },
+        { bytes: 5, delay: 10 },
+        // Repeat the same value - with the new behavior, this should NOT trigger stall detection
+        // as long as progress events are still being fired
+        ...Array(12).fill({ bytes: 5, delay: 30 }),
+        // Eventually progress continues
+        { bytes: 8, delay: 10 },
+        { bytes: 11, delay: 10 },
       ]
 
       testStack.setNextProgressSequence(progressSequence)
@@ -472,8 +478,15 @@ describe('tus-stall-detection', () => {
       const patchReq = await testStack.nextRequest()
       expect(patchReq.method).toBe('PATCH')
 
-      const error = await options.onError.toBeCalled()
-      expect(error.message).toContain('stalled: no progress')
+      // Complete the upload successfully
+      patchReq.respondWith({
+        status: 204,
+        responseHeaders: { 'Upload-Offset': '11' },
+      })
+
+      // The upload should complete successfully without stall detection
+      await options.onSuccess.toBeCalled()
+      expect(options.onError.calls.count()).toBe(0)
       expect(options.onProgress.calls.count()).toBeGreaterThan(0)
     })
 

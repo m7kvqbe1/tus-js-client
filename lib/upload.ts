@@ -119,8 +119,6 @@ export class BaseUpload {
   // upload options or HEAD response)
   private _uploadLengthDeferred: boolean
 
-
-
   constructor(file: UploadInput, options: UploadOptions) {
     // Warn about removed options from previous versions
     if ('resume' in options) {
@@ -288,7 +286,7 @@ export class BaseUpload {
    *
    * @api private
    */
-    private async _startParallelUpload(): Promise<void> {
+  private async _startParallelUpload(): Promise<void> {
     const totalSize = this._size
     let totalProgress = 0
     this._parallelUploads = []
@@ -378,8 +376,6 @@ export class BaseUpload {
 
         // @ts-expect-error `value` is unknown and not an UploadInput
         const upload = new BaseUpload(value, options)
-
-
 
         upload.start()
 
@@ -778,8 +774,6 @@ export class BaseUpload {
       await this.options.onUploadUrlAvailable()
     }
 
-
-
     await this._saveUploadInUrlStorage()
 
     // Upload has already been completed and we do not need to send additional
@@ -876,11 +870,10 @@ export class BaseUpload {
           }
           // Don't call _retryOrEmitError here - let the natural error flow handle it
         })
-      } else {
-        log(
-          'tus: stall detection is enabled but the HTTP stack does not support progress events, it will be disabled for this upload',
-        )
       }
+      log(
+        'tus: stall detection is enabled but the HTTP stack does not support progress events, it will be disabled for this upload',
+      )
     }
     return undefined
   }

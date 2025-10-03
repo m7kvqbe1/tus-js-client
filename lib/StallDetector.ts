@@ -7,7 +7,6 @@ export class StallDetector {
 
   private intervalId: ReturnType<typeof setInterval> | null = null
   private lastProgressTime = 0
-  private lastProgressValue = 0
   private isActive = false
 
   constructor(options: StallDetectionOptions, onStallDetected: (reason: string) => void) {
@@ -24,7 +23,6 @@ export class StallDetector {
     }
 
     this.lastProgressTime = Date.now()
-    this.lastProgressValue = 0
     this.isActive = true
 
     log(
@@ -57,14 +55,12 @@ export class StallDetector {
 
   /**
    * Update progress information
-   * @param progressValue The current progress value (bytes uploaded)
+   * @param _progressValue The current progress value (bytes uploaded) - currently unused but kept for future use
    */
-  updateProgress(progressValue: number): void {
-    // Only update progress time if the value has actually changed
-    if (progressValue !== this.lastProgressValue) {
-      this.lastProgressTime = Date.now()
-      this.lastProgressValue = progressValue
-    }
+  updateProgress(_progressValue: number): void {
+    // Only track that a progress event occurred, not the actual value
+    // This avoids false positives with NodeHttpStack's buffer behavior
+    this.lastProgressTime = Date.now()
   }
 
   /**
