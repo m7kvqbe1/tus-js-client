@@ -248,6 +248,47 @@ _Default value:_ `false`
 
 A boolean indicating if the fingerprint in the URL storage will be removed once the upload is successfully completed. When this feature is enabled and the same file is uploaded again, it will create an entirely new upload instead of reusing the previous one. Furthermore, this option will only change behavior if `urlStorage` is not `null`.
 
+#### progressiveUrlSaving
+
+_Default value:_ `false`
+
+A boolean indicating whether partial upload URLs should be saved progressively during parallel uploads. When `false` (default), all partial upload URLs must be successfully created before any are saved to storage. When `true`, each partial upload URL is saved immediately after its POST request succeeds.
+
+This option only has an effect when `parallelUploads` is greater than 1. Enabling this provides better fault tolerance for parallel uploads:
+- If a browser crash or network failure occurs, successfully created partial uploads can still be resumed
+- Earlier persistence reduces the window of data loss
+- More granular progress tracking across sessions
+
+When using this option, your `urlStorage` implementation should handle concurrent updates safely, especially if using a database backend. Consider using a mutex or other synchronization mechanism to prevent race conditions when multiple parallel uploads save their URLs simultaneously.
+
+Example usage with a thread-safe storage implementation:
+```js
+import { Mutex } from 'async-mutex'
+
+class ThreadSafeUrlStorage {
+  constructor() {
+    this.mutex = new Mutex()
+  }
+
+  async addUpload(fingerprint, upload) {
+    const release = await this.mutex.acquire()
+    try {
+      // Merge parallelUploadUrls arrays safely
+      // Your database operations here
+    } finally {
+      release()
+    }
+  }
+}
+
+const upload = new tus.Upload(file, {
+  parallelUploads: 4,
+  progressiveUrlSaving: true,
+  urlStorage: new ThreadSafeUrlStorage(),
+  // ... other options
+})
+```
+
 #### uploadLengthDeferred
 
 _Default value:_ `false`

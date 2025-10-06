@@ -85,6 +85,7 @@ export interface UploadOptions {
   parallelUploadBoundaries?: { start: number; end: number }[]
   storeFingerprintForResuming: boolean
   removeFingerprintOnSuccess: boolean
+  progressiveUrlSaving: boolean
   uploadLengthDeferred: boolean
   uploadDataDuringCreation: boolean
 

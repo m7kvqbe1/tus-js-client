@@ -55,6 +55,22 @@ input.addEventListener('change', function (e) {
 })
 ```
 
+### Parallel Uploads with Progressive URL Saving
+
+For better fault tolerance with parallel uploads, you can enable progressive URL saving:
+
+```js
+var upload = new tus.Upload(file, {
+  endpoint: 'http://localhost:1080/files/',
+  parallelUploads: 4,
+  progressiveUrlSaving: true, // Save each partial upload URL immediately
+  urlStorage: myThreadSafeStorage, // Your storage implementation
+  // ... other options
+})
+```
+
+When enabled, partial upload URLs are saved immediately as each completes, rather than waiting for all to finish. This improves resumability if failures occur during parallel uploads. See the [API documentation](docs/api.md#progressiveurlsaving) for implementation details.
+
 ## Documentation
 
 - [Installation & Requirements](/docs/installation.md)
