@@ -313,7 +313,7 @@ export class BaseUpload {
     }))
 
     // Create an empty list for storing the upload URLs
-    this._parallelUploadUrls = Array.apply(null, Array(this.options.parallelUploads)).map(() => null)
+    this._parallelUploadUrls = parts.map((part) => part.uploadUrl)
 
     // Generate a promise for each slice that will be resolve if the respective
     // upload is completed.
@@ -360,6 +360,8 @@ export class BaseUpload {
           // Wait until every partial upload has an upload URL, so we can add
           // them to the URL storage.
           onUploadUrlAvailable: async () => {
+            if (!upload.url) return
+
             // @ts-expect-error We know that _parallelUploadUrls is defined
             this._parallelUploadUrls[index] = upload.url
 
@@ -1026,12 +1028,10 @@ export class BaseUpload {
   private async _saveUploadInUrlStorage(): Promise<void> {
     // We do not store the upload URL
     // - if it was disabled in the option, or
-    // - if no fingerprint was calculated for the input (i.e. a stream), or
-    // - if the URL is already stored (i.e. key is set alread).
+    // - if no fingerprint was calculated for the input (i.e. a stream)
     if (
       !this.options.storeFingerprintForResuming ||
-      !this._fingerprint ||
-      this._urlStorageKey != null
+      !this._fingerprint
     ) {
       return
     }
