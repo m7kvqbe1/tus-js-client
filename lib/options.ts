@@ -117,7 +117,7 @@ export interface PreviousUpload {
   metadata: { [key: string]: string }
   creationTime: string
   uploadUrl?: string
-  parallelUploadUrls?: string[]
+  parallelUploadUrls?: (string | null)[]
   urlStorageKey: string
 }
 
