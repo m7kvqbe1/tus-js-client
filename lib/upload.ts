@@ -114,7 +114,7 @@ export class BaseUpload {
 
   // An array of upload URLs which are used for uploading the different
   // parts, if the parallelUploads option is used.
-  private _parallelUploadUrls?: string[]
+  private _parallelUploadUrls?: (string | null)[]
 
   // True if the remote upload resource's length is deferred (either taken from
   // upload options or HEAD response)
@@ -313,7 +313,7 @@ export class BaseUpload {
     }))
 
     // Create an empty list for storing the upload URLs
-    this._parallelUploadUrls = new Array(parts.length)
+    this._parallelUploadUrls = Array.apply(null, Array(this.options.parallelUploads)).map(() => null)
 
     // Generate a promise for each slice that will be resolve if the respective
     // upload is completed.
@@ -365,8 +365,8 @@ export class BaseUpload {
 
             // Progressive saving: save immediately when each URL becomes available
             // This allows for better fault tolerance and earlier persistence
-            if (this.options.progressiveUrlSaving && upload.url) {
-              await this._savePartialUploadUrl(index, upload.url)
+            if (this.options.progressiveUrlSaving) {
+              await this._saveUploadInUrlStorage()
             } else {
               // Legacy behavior: wait for all URLs before saving
               // @ts-expect-error We know that _parallelUploadUrls is defined
@@ -1016,35 +1016,6 @@ export class BaseUpload {
 
     await this.options.urlStorage.removeUpload(this._urlStorageKey)
     this._urlStorageKey = undefined
-  }
-
-  /**
-   * Save a single partial upload URL at the specified index.
-   * This is used for progressive URL saving during parallel uploads.
-   *
-   * The UrlStorage implementation must handle concurrent updates
-   * safely when using this method.
-   *
-   * @api private
-   */
-  private async _savePartialUploadUrl(index: number, url: string): Promise<void> {
-    if (
-      !this.options.storeFingerprintForResuming ||
-      !this._fingerprint
-    ) {
-      return
-    }
-
-    const storedUpload: PreviousUpload = {
-      size: this._size,
-      metadata: this.options.metadata,
-      creationTime: new Date().toString(),
-      urlStorageKey: this._fingerprint,
-      parallelUploadUrls: this._parallelUploadUrls,
-    }
-
-    const urlStorageKey = await this.options.urlStorage.addUpload(this._fingerprint, storedUpload)
-    this._urlStorageKey = urlStorageKey
   }
 
   /**
