@@ -114,7 +114,7 @@ export class BaseUpload {
 
   // An array of upload URLs which are used for uploading the different
   // parts, if the parallelUploads option is used.
-  private _parallelUploadUrls?: string[]
+  private _parallelUploadUrls?: (string | null)[]
 
   // True if the remote upload resource's length is deferred (either taken from
   // upload options or HEAD response)
@@ -313,7 +313,7 @@ export class BaseUpload {
     }))
 
     // Create an empty list for storing the upload URLs
-    this._parallelUploadUrls = new Array(parts.length)
+    this._parallelUploadUrls = parts.map((x) => x.uploadUrl)
 
     // Generate a promise for each slice that will be resolve if the respective
     // upload is completed.
@@ -360,19 +360,24 @@ export class BaseUpload {
           // Wait until every partial upload has an upload URL, so we can add
           // them to the URL storage.
           onUploadUrlAvailable: async () => {
+            if (!upload.url) return
+            console.debug(`Updating url for index ${index}`)
+
             // @ts-expect-error We know that _parallelUploadUrls is defined
             this._parallelUploadUrls[index] = upload.url
 
+            console.debug(this._parallelUploadUrls)
+
             // Progressive saving: save immediately when each URL becomes available
             // This allows for better fault tolerance and earlier persistence
-            if (this.options.progressiveUrlSaving && upload.url) {
-              await this._savePartialUploadUrl(index, upload.url)
-            } else {
-              // Legacy behavior: wait for all URLs before saving
-              // @ts-expect-error We know that _parallelUploadUrls is defined
-              if (this._parallelUploadUrls.filter((u) => Boolean(u)).length === parts.length) {
-                await this._saveUploadInUrlStorage()
-              }
+            if (this.options.progressiveUrlSaving) {
+              await this._saveUploadInUrlStorage()
+            }
+
+            // Legacy behavior: wait for all URLs before saving
+            // @ts-expect-error We know that _parallelUploadUrls is defined
+            if (this._parallelUploadUrls.filter((u) => Boolean(u)).length === parts.length) {
+              await this._saveUploadInUrlStorage()
             }
           },
         }
@@ -1019,35 +1024,6 @@ export class BaseUpload {
   }
 
   /**
-   * Save a single partial upload URL at the specified index.
-   * This is used for progressive URL saving during parallel uploads.
-   *
-   * The UrlStorage implementation must handle concurrent updates
-   * safely when using this method.
-   *
-   * @api private
-   */
-  private async _savePartialUploadUrl(index: number, url: string): Promise<void> {
-    if (
-      !this.options.storeFingerprintForResuming ||
-      !this._fingerprint
-    ) {
-      return
-    }
-
-    const storedUpload: PreviousUpload = {
-      size: this._size,
-      metadata: this.options.metadata,
-      creationTime: new Date().toString(),
-      urlStorageKey: this._fingerprint,
-      parallelUploadUrls: this._parallelUploadUrls,
-    }
-
-    const urlStorageKey = await this.options.urlStorage.addUpload(this._fingerprint, storedUpload)
-    this._urlStorageKey = urlStorageKey
-  }
-
-  /**
    * Add the upload URL to the URL storage, if possible.
    *
    * @api private
@@ -1055,12 +1031,10 @@ export class BaseUpload {
   private async _saveUploadInUrlStorage(): Promise<void> {
     // We do not store the upload URL
     // - if it was disabled in the option, or
-    // - if no fingerprint was calculated for the input (i.e. a stream), or
-    // - if the URL is already stored (i.e. key is set alread).
+    // - if no fingerprint was calculated for the input (i.e. a stream)
     if (
       !this.options.storeFingerprintForResuming ||
-      !this._fingerprint ||
-      this._urlStorageKey != null
+      !this._fingerprint
     ) {
       return
     }

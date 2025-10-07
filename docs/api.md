@@ -259,36 +259,6 @@ This option only has an effect when `parallelUploads` is greater than 1. Enablin
 - Earlier persistence reduces the window of data loss
 - More granular progress tracking across sessions
 
-When using this option, your `urlStorage` implementation should handle concurrent updates safely, especially if using a database backend. Consider using a mutex or other synchronization mechanism to prevent race conditions when multiple parallel uploads save their URLs simultaneously.
-
-Example usage with a thread-safe storage implementation:
-```js
-import { Mutex } from 'async-mutex'
-
-class ThreadSafeUrlStorage {
-  constructor() {
-    this.mutex = new Mutex()
-  }
-
-  async addUpload(fingerprint, upload) {
-    const release = await this.mutex.acquire()
-    try {
-      // Merge parallelUploadUrls arrays safely
-      // Your database operations here
-    } finally {
-      release()
-    }
-  }
-}
-
-const upload = new tus.Upload(file, {
-  parallelUploads: 4,
-  progressiveUrlSaving: true,
-  urlStorage: new ThreadSafeUrlStorage(),
-  // ... other options
-})
-```
-
 #### uploadLengthDeferred
 
 _Default value:_ `false`
