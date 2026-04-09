@@ -413,9 +413,7 @@ export class BaseUpload {
 
     let res: HttpResponse
     try {
-      // Create stall detector for final concatenation POST request
-      const stallDetector = this._createStallDetector()
-      res = await this._sendRequest(req, undefined, stallDetector)
+      res = await this._sendRequest(req)
     } catch (err) {
       if (!(err instanceof Error)) {
         throw new Error(`tus: value thrown that is not an error: ${err}`)
