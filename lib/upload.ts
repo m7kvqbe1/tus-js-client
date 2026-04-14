@@ -290,6 +290,13 @@ export class BaseUpload {
   private async _startParallelUpload(): Promise<void> {
     const totalSize = this._size
     let totalProgress = 0
+
+    if (this._parallelUploads != null) {
+      for (const upload of this._parallelUploads) {
+        await upload.abort()
+      }
+    }
+
     this._parallelUploads = []
 
     const partCount =
@@ -1027,10 +1034,7 @@ export class BaseUpload {
     // We do not store the upload URL
     // - if it was disabled in the option, or
     // - if no fingerprint was calculated for the input (i.e. a stream)
-    if (
-      !this.options.storeFingerprintForResuming ||
-      !this._fingerprint
-    ) {
+    if (!this.options.storeFingerprintForResuming || !this._fingerprint) {
       return
     }
 

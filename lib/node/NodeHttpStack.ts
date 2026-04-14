@@ -117,6 +117,11 @@ class Request implements HttpRequest {
       const httpModule = options.protocol === 'https:' ? https : http
       this._request = httpModule.request(options)
       const req = this._request
+
+      req.on('timeout', () => {
+        req.destroy(new Error('socket timeout'))
+      })
+
       req.on('response', (res) => {
         const resChunks: Buffer[] = []
         res.on('data', (data: Buffer) => {
