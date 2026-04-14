@@ -208,6 +208,34 @@ Following example will trigger up to three retries, each after 1s, 3s and 5s res
 retryDelays: [1000, 3000, 5000]
 ```
 
+#### stallDetection
+
+_Default value:_ `{ enabled: false, stallTimeout: 30000, checkInterval: 5000 }`
+
+An object controlling the stall detection feature, which can automatically detect when an upload has stopped making progress and trigger a retry. This is useful for recovering from frozen uploads caused by network issues that don't trigger explicit errors.
+
+The stall detection options are:
+- `enabled`: Boolean indicating whether stall detection is active (default: `false`)
+- `stallTimeout`: Time in milliseconds without progress before considering the upload stalled (default: `30000`)
+- `checkInterval`: How often in milliseconds to check for stalls (default: `5000`)
+
+**Note:** Stall detection only works with HTTP stacks that support progress events. Currently, this includes:
+- `XHRHttpStack` (browser default) - Supported
+- `NodeHttpStack` (Node.js default) - Supported
+- `FetchHttpStack` - Not supported
+
+When a stall is detected, the upload will be automatically retried according to your `retryDelays` configuration. If `retryDelays` is `null`, the stall will trigger an error instead.
+
+Example configuration:
+
+```js
+stallDetection: {
+    enabled: true,
+    stallTimeout: 15000,  // 15 seconds without progress
+    checkInterval: 2000   // Check every 2 seconds
+}
+```
+
 #### storeFingerprintForResuming
 
 _Default value:_ `true`
@@ -219,6 +247,17 @@ A boolean indicating if the upload URL should be stored in the URL storage using
 _Default value:_ `false`
 
 A boolean indicating if the fingerprint in the URL storage will be removed once the upload is successfully completed. When this feature is enabled and the same file is uploaded again, it will create an entirely new upload instead of reusing the previous one. Furthermore, this option will only change behavior if `urlStorage` is not `null`.
+
+#### progressiveUrlSaving
+
+_Default value:_ `false`
+
+A boolean indicating whether partial upload URLs should be saved progressively during parallel uploads. When `false` (default), all partial upload URLs must be successfully created before any are saved to storage. When `true`, each partial upload URL is saved immediately after its POST request succeeds.
+
+This option only has an effect when `parallelUploads` is greater than 1. Enabling this provides better fault tolerance for parallel uploads:
+- If a browser crash or network failure occurs, successfully created partial uploads can still be resumed
+- Earlier persistence reduces the window of data loss
+- More granular progress tracking across sessions
 
 #### uploadLengthDeferred
 
@@ -326,6 +365,7 @@ An object used as the HTTP stack for making network requests. This is an abstrac
 interface HttpStack {
     createRequest(method: string, url: string): HttpRequest;
     getName(): string;
+    supportsProgressEvents(): boolean;
 }
 
 interface HttpRequest {
@@ -369,6 +409,14 @@ interface HttpResponse {
 }
 
 ```
+
+The `supportsProgressEvents()` method should return `true` if the HTTP stack implementation supports progress events during upload, or `false` otherwise. This is used by tus-js-client to determine whether features like stall detection can be enabled. The built-in HTTP stacks have the following support:
+
+- `XHRHttpStack` (browser default): Returns `true` - XMLHttpRequest supports progress events
+- `NodeHttpStack` (Node.js default): Returns `true` - Node.js HTTP module supports progress events
+- `FetchHttpStack`: Returns `false` - Fetch API does not support upload progress events
+
+If you're implementing a custom HTTP stack, you should return `true` only if your implementation can reliably call the progress handler set via `setProgressHandler` during the upload process.
 
 #### urlStorage
 
