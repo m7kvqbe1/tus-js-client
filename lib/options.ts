@@ -48,6 +48,15 @@ export type UploadInput =
   // available in React Native
   | ReactNativeFile
 
+/**
+ * Options for configuring stall detection behavior
+ */
+export interface StallDetectionOptions {
+  enabled: boolean
+  stallTimeout: number // Time in ms before considering progress stalled
+  checkInterval: number // How often to check for stalls
+}
+
 export interface UploadOptions {
   endpoint?: string
 
@@ -85,6 +94,8 @@ export interface UploadOptions {
   httpStack: HttpStack
 
   protocol: typeof PROTOCOL_TUS_V1 | typeof PROTOCOL_IETF_DRAFT_03 | typeof PROTOCOL_IETF_DRAFT_05
+
+  stallDetection?: StallDetectionOptions
 }
 
 export interface OnSuccessPayload {
@@ -142,6 +153,10 @@ export type SliceResult =
 export interface HttpStack {
   createRequest(method: string, url: string): HttpRequest
   getName(): string
+
+  // Indicates whether this HTTP stack implementation
+  // supports progress events during upload.
+  supportsProgressEvents: () => boolean
 }
 
 export type HttpProgressHandler = (bytesSent: number) => void
