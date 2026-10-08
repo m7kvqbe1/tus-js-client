@@ -299,21 +299,27 @@ export class BaseUpload {
 
     this._parallelUploads = []
 
-    const partCount =
-      this._parallelUploadUrls != null
-        ? this._parallelUploadUrls.length
-        : this.options.parallelUploads
-
     if (this._size == null) {
       throw new Error('tus: Expected _size to be set')
     }
 
+    const requestedPartCount =
+      this._parallelUploadUrls != null
+        ? this._parallelUploadUrls.length
+        : this.options.parallelUploads
+
     // The input file will be split into multiple slices which are uploaded in separate
     // requests. Here we get the start and end position for the slices.
+    // `splitSizeIntoParts` may return fewer parts than requested when the file is
+    // smaller than `requestedPartCount` bytes; downstream logic (URL persistence,
+    // progress aggregation, final concat) keys off `parts.length` so this is safe.
     const partsBoundaries =
-      this.options.parallelUploadBoundaries ?? splitSizeIntoParts(this._size, partCount)
+      this.options.parallelUploadBoundaries ??
+      splitSizeIntoParts(this._size, requestedPartCount)
 
-    // Attach URLs from previous uploads, if available.
+    // Attach URLs from previous uploads, if available. Any persisted URLs beyond
+    // the actual part count are dropped — these are typically empty slots from a
+    // previous attempt that crashed before the partial upload was created.
     const parts = partsBoundaries.map((part, index) => ({
       ...part,
       uploadUrl: this._parallelUploadUrls?.[index] || null,
@@ -1243,17 +1249,23 @@ type Part = { start: number; end: number }
  * @api private
  */
 function splitSizeIntoParts(totalSize: number, partCount: number): Part[] {
-  const partSize = Math.floor(totalSize / partCount)
+  // When the file is smaller than `partCount` bytes, `Math.floor(totalSize / partCount)`
+  // is `0`, which would leave every non-final part as `{ start: 0, end: 0 }`.
+  // `PathFileSource.slice(0, 0)` then calls `fs.createReadStream(path, { end: -1 })`
+  // and Node throws `ERR_OUT_OF_RANGE`. Instead, treat `parallelUploads` as an upper
+  // bound and emit at most `totalSize` parts so every part carries at least one byte.
+  const effectivePartCount = totalSize > 0 ? Math.min(partCount, totalSize) : 1
+  const partSize = Math.floor(totalSize / effectivePartCount)
   const parts: Part[] = []
 
-  for (let i = 0; i < partCount; i++) {
+  for (let i = 0; i < effectivePartCount; i++) {
     parts.push({
       start: partSize * i,
       end: partSize * (i + 1),
     })
   }
 
-  parts[partCount - 1].end = totalSize
+  parts[effectivePartCount - 1].end = totalSize
 
   return parts
 }
