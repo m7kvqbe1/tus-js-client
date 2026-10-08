@@ -704,6 +704,12 @@ export class BaseUpload {
         throw new DetailedError('tus: upload is currently locked; retry later', undefined, req, res)
       }
 
+      // A server error while resuming is transient, so throw to trigger a retry of the HEAD
+      // request instead of discarding the existing upload and creating a new one.
+      if (inStatusCategory(status, 500)) {
+        throw new DetailedError('tus: server error during resume, retrying', undefined, req, res)
+      }
+
       if (inStatusCategory(status, 400)) {
         // Remove stored fingerprint and corresponding endpoint,
         // on client errors since the file can not be found
