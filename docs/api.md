@@ -224,6 +224,8 @@ The stall detection options are:
 - `NodeHttpStack` (Node.js default) - Supported
 - `FetchHttpStack` - Not supported
 
+Stall detection is also applied to the `HEAD` request used for resuming an upload and to the `POST` request creating it. As those requests carry no body and therefore emit no progress events, `stallTimeout` acts as a plain request timeout for them. The final `POST` request that concatenates parallel uploads is excluded, because the server may legitimately take a long time to concatenate large parts.
+
 When a stall is detected, the upload will be automatically retried according to your `retryDelays` configuration. If `retryDelays` is `null`, the stall will trigger an error instead.
 
 Example configuration:

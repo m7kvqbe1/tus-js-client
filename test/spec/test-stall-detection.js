@@ -208,6 +208,47 @@ async function handleUploadCreation(testStack, location = '/uploads/12345') {
   return req
 }
 
+/**
+ * Helper function to test stall detection for a specific request method
+ */
+async function testStallDetectionForMethod(method, uploadOptions = {}) {
+  const { enableDebugLog } = await import('tus-js-client')
+  enableDebugLog()
+
+  const testStack = new StallTestHttpStack()
+  testStack.simulateStallForMethod(method)
+
+  const options = {
+    httpStack: testStack,
+    stallDetection: {
+      enabled: true,
+      checkInterval: 50,
+      stallTimeout: 200,
+    },
+    retryDelays: null,
+    ...uploadOptions,
+  }
+
+  const { upload, options: testOptions } = createTestUpload(options)
+
+  const originalLog = console.log
+  let loggedMessage = ''
+  console.log = (message) => {
+    loggedMessage += `${message}\n`
+  }
+
+  upload.start()
+
+  const request = await testStack.nextRequest()
+  expect(request.method).toBe(method)
+
+  const error = await testOptions.onError.toBeCalled()
+
+  console.log = originalLog
+
+  return { error, loggedMessage, request }
+}
+
 describe('tus-stall-detection', () => {
   describe('integration tests', () => {
     it("should not enable stall detection if HTTP stack doesn't support progress events", async () => {
@@ -447,6 +488,28 @@ describe('tus-stall-detection', () => {
       await options.onSuccess.toBeCalled()
       expect(options.onError.calls.count()).toBe(0)
       expect(options.onProgress.calls.count()).toBeGreaterThan(0)
+    })
+
+    it('should detect stalls during POST request (upload creation)', async () => {
+      const { error, loggedMessage, request } = await testStallDetectionForMethod('POST')
+
+      expect(request.url).toBe('https://tus.io/uploads')
+      expect(error.message).toContain('request aborted')
+      expect(error.message).toContain('POST')
+      expect(loggedMessage).toContain('starting stall detection')
+      expect(loggedMessage).toContain('upload stalled')
+    })
+
+    it('should detect stalls during HEAD request (resuming upload)', async () => {
+      const { error, loggedMessage, request } = await testStallDetectionForMethod('HEAD', {
+        uploadUrl: 'https://tus.io/uploads/existing',
+      })
+
+      expect(request.url).toBe('https://tus.io/uploads/existing')
+      expect(error.message).toContain('request aborted')
+      expect(error.message).toContain('HEAD')
+      expect(loggedMessage).toContain('starting stall detection')
+      expect(loggedMessage).toContain('upload stalled')
     })
   })
 })
