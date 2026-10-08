@@ -620,6 +620,89 @@ describe('tus', () => {
       expect(upload.url).toBe('http://tus.io/files/upload')
     })
 
+    it('should retry the HEAD request when resuming fails with a server error', async () => {
+      const testStack = new TestHttpStack()
+      const file = getBlob('hello world')
+      const options = {
+        httpStack: testStack,
+        endpoint: 'http://tus.io/uploads',
+        uploadUrl: 'http://tus.io/files/upload',
+        retryDelays: [10],
+        onSuccess: waitableFunction('onSuccess'),
+      }
+
+      const upload = new Upload(file, options)
+      upload.start()
+
+      let req = await testStack.nextRequest()
+      expect(req.url).toBe('http://tus.io/files/upload')
+      expect(req.method).toBe('HEAD')
+
+      req.respondWith({
+        status: 500,
+      })
+
+      // The existing upload must be kept and the HEAD request repeated instead of
+      // creating a new upload from scratch.
+      req = await testStack.nextRequest()
+      expect(req.url).toBe('http://tus.io/files/upload')
+      expect(req.method).toBe('HEAD')
+
+      req.respondWith({
+        status: 204,
+        responseHeaders: {
+          'Upload-Length': '11',
+          'Upload-Offset': '3',
+        },
+      })
+
+      req = await testStack.nextRequest()
+      expect(req.url).toBe('http://tus.io/files/upload')
+      expect(req.method).toBe('PATCH')
+      expect(req.requestHeaders['Upload-Offset']).toBe('3')
+
+      req.respondWith({
+        status: 204,
+        responseHeaders: {
+          'Upload-Offset': '11',
+        },
+      })
+
+      await options.onSuccess.toBeCalled()
+      expect(upload.url).toBe('http://tus.io/files/upload')
+    })
+
+    it('should not create a new upload when resuming fails with a server error and retries are disabled', async () => {
+      const testStack = new TestHttpStack()
+      const file = getBlob('hello world')
+      const options = {
+        httpStack: testStack,
+        endpoint: 'http://tus.io/uploads',
+        uploadUrl: 'http://tus.io/files/upload',
+        retryDelays: null,
+        onError: waitableFunction('onError'),
+      }
+
+      const upload = new Upload(file, options)
+      upload.start()
+
+      const req = await testStack.nextRequest()
+      expect(req.url).toBe('http://tus.io/files/upload')
+      expect(req.method).toBe('HEAD')
+
+      req.respondWith({
+        status: 500,
+      })
+
+      const err = await options.onError.toBeCalled()
+      expect(err.message).toContain('tus: server error during resume')
+      expect(err.originalResponse.getStatus()).toBe(500)
+
+      // No new upload must be created.
+      const result = await Promise.race([testStack.nextRequest(), wait(100)])
+      expect(result).toBe('timed out')
+    })
+
     it('should resume a previously started upload', async () => {
       const testStack = new TestHttpStack()
       const file = getBlob('hello world')
