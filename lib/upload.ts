@@ -633,7 +633,10 @@ export class BaseUpload {
         ) {
           req.setHeader('Upload-Complete', '?0')
         }
-        res = await this._sendRequest(req)
+        // The creation request carries no body unless `uploadDataDuringCreation` is set,
+        // so the stall detector mostly acts as a plain timeout here.
+        const stallDetector = this._createStallDetector()
+        res = await this._sendRequest(req, undefined, stallDetector)
       }
     } catch (err) {
       if (!(err instanceof Error)) {
@@ -695,7 +698,9 @@ export class BaseUpload {
 
     let res: HttpResponse
     try {
-      res = await this._sendRequest(req)
+      // A HEAD request carries no body, so the stall detector acts as a plain timeout here.
+      const stallDetector = this._createStallDetector()
+      res = await this._sendRequest(req, undefined, stallDetector)
     } catch (err) {
       if (!(err instanceof Error)) {
         throw new Error(`tus: value thrown that is not an error: ${err}`)
